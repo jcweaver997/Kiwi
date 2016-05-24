@@ -1,0 +1,88 @@
+	// PI is 3.1415926535
+	// rotationGain represents angle gain from controller input
+	// rotationPower represents motor power coefficient for rotation
+	// maxPower doesn't accurately mean the max power to the motor,
+	//		but the values will never go above maxPower 
+	// deadzone is the amount of space the controller has before doing anything 0-1
+	// make note that total power = translational power + rotational power
+	// x is -1 to 1 horizontal input from the controller.
+	// y is -1 to 1 vertical input from the controller.
+	// rot is -1 to 1 controller value indicating rotation.
+void Drivetrain::KiwiDrive(float x, float y, float rot){
+
+
+	// Assuming gyro rotates counter-clockwise and in degrees
+	// and that sin and cos are in radians
+
+	// gangle represents the gyro angle in degrees
+	float gangle = gyro->GetAngle();
+	
+	// grangle represents the gyro angle in radians
+	float grangle = gangle/180*PI;
+
+	// calculates deadzone for the controller
+	if (abs(rot)<deadzone){// DEADZONE
+		rot = 0;
+	}else{
+		// sets the target angle value(radians)
+		targetRot = grangle+rot*rotationGain;
+	}
+	
+	float rotationAmount = (targetRot-grangle)*rotationPower;
+
+	// convert the controller input to polar coordinates
+	// so we can modify its magnitude and direction
+	float polarmag = (pow(x,2)+pow(y,2));
+	
+	// this is to get the polar angle of the controller values
+	// the problem arises when x is negative or 0
+	// when x is negative, it gives us radians from PI instead of 0
+	// when x is 0, it gives an error, no dividing by zero, it will destroy the world
+	float polarang = PI/2;
+	if(x == 0){
+		polarang *= (y>0 ? 1 : -1);
+	}else{
+		polarang = (atan(y/x));
+	}
+	if(x < 0){
+		polarang = PI-(atan(y/-x));
+
+	}
+	
+	// make sure we don't go above our maxPower (or below when negative)
+	// this is for the rotation
+	ABLIMIT(rotationAmount, maxPower);
+	
+	// applies rotationPriority to our translate power
+	ABLIMIT(polarmag, (maxPower-rotationAmount*rotationPriority));
+	
+	// applies rotationPriority to our rotation power
+	if(polarmag>maxPower){
+		rotationAmount*=rotationPriority;
+	}
+	
+
+	
+	// angle represents the angle the motor sees
+	// this allows it to be field-centric
+	float angle = polarang + grangle;
+	
+	// converting back to rectangular coordinates
+	float nx = polarmag*cos(angle);
+	float ny = polarmag*sin(angle);
+
+
+
+	// this is where it sets the voltage amounts
+	// the coefficients are 30-60-90 triangle side relationships 
+	left = -.5*nx - sqrt(3)/2*ny + rotationAmount;
+	right = -.5*nx + sqrt(3)/2*ny + rotationAmount;
+	bottom = nx + rotationAmount;
+
+	// we apply the voltage amounts to the motors
+	// the right motor is set negative because
+	// Harrison plugged it in backwards
+	leftMotor->Set(left);
+	rightMotor->Set(-right);
+	bottomMotor->Set(bottom);
+}
